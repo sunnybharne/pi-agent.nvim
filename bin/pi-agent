@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CODEX_CMD="${PI_AGENT_CODEX_CMD:-codex}"
+
+die() {
+  printf 'pi-agent: %s\n' "$*" >&2
+  exit 1
+}
+
+need_codex() {
+  command -v "$CODEX_CMD" >/dev/null 2>&1 || die "Codex CLI was not found. Install it or set PI_AGENT_CODEX_CMD."
+}
+
+take_value() {
+  local name="$1"
+  shift
+  [[ $# -gt 0 ]] || die "$name requires a value"
+  printf '%s\n' "$1"
+}
+
+run_exec() {
+  local cwd="$PWD"
+  local model=""
+  local sandbox="read-only"
+  local approval="never"
+  local args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cd|-C)
+        cwd="$(take_value "$1" "${@:2}")"
+        shift 2
+        ;;
+      --model|-m)
+        model="$(take_value "$1" "${@:2}")"
+        shift 2
+        ;;
+      --sandbox|-s)
+        sandbox="$(take_value "$1" "${@:2}")"
+        shift 2
+        ;;
+      --approval|--ask-for-approval|-a)
+        approval="$(take_value "$1" "${@:2}")"
+        shift 2
+        ;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do
+          args+=("$1")
+          shift
+        done
+        ;;
+      -)
+        shift
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  need_codex
+
+  local codex_args=(exec --skip-git-repo-check --cd "$cwd" --color never)
+  [[ -n "$model" ]] && codex_args+=(--model "$model")
+  [[ -n "$sandbox" ]] && codex_args+=(--sandbox "$sandbox")
+  [[ -n "$approval" ]] && codex_args+=(--ask-for-approval "$approval")
+  if [[ ${#args[@]} -gt 0 ]]; then
+    codex_args+=("${args[@]}")
+  fi
+  codex_args+=(-)
+
+  exec "$CODEX_CMD" "${codex_args[@]}"
+}
+
+run_cli() {
+  local cwd="$PWD"
+  local args=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cd|-C)
+        cwd="$(take_value "$1" "${@:2}")"
+        shift 2
+        ;;
+      --)
+        shift
+        while [[ $# -gt 0 ]]; do
+          args+=("$1")
+          shift
+        done
+        ;;
+      *)
+        args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  need_codex
+  if [[ ${#args[@]} -gt 0 ]]; then
+    exec "$CODEX_CMD" --cd "$cwd" "${args[@]}"
+  fi
+
+  exec "$CODEX_CMD" --cd "$cwd"
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  pi-agent exec [--cd DIR] [--model MODEL] [--sandbox MODE] [--approval POLICY] [-]
+  pi-agent cli [--cd DIR] [prompt]
+  pi-agent login
+  pi-agent status
+
+Pi Agent is the backend command for pi-agent.nvim. It currently uses the local
+Codex CLI as its execution engine, so authentication remains in `codex login`.
+EOF
+}
+
+main() {
+  local command="${1:-exec}"
+  if [[ $# -gt 0 ]]; then
+    shift
+  fi
+
+  case "$command" in
+    exec)
+      run_exec "$@"
+      ;;
+    cli)
+      run_cli "$@"
+      ;;
+    login)
+      need_codex
+      exec "$CODEX_CMD" login --device-auth "$@"
+      ;;
+    status)
+      need_codex
+      exec "$CODEX_CMD" login status "$@"
+      ;;
+    help|--help|-h)
+      usage
+      ;;
+    version|--version|-v)
+      printf 'pi-agent.nvim backend\n'
+      need_codex
+      "$CODEX_CMD" --version
+      ;;
+    *)
+      usage >&2
+      die "unknown command: $command"
+      ;;
+  esac
+}
+
+main "$@"

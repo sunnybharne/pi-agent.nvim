@@ -1,15 +1,15 @@
 # pi-agent.nvim
 
-A personal Neovim assistant that talks to the local Codex CLI.
+A personal Neovim assistant that talks to the `pi-agent` backend.
 
-The command shape is inspired by CodeCompanion, but this plugin stays small and
-uses your existing `codex` login instead of API keys.
+The command shape is inspired by CodeCompanion, but this plugin stays small.
+Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 ## Requirements
 
 - Neovim 0.10+
-- `codex` available in `PATH`
-- Codex logged in on the machine
+- The bundled `bin/pi-agent` backend
+- A working model/runtime behind Pi Agent
 
 ## Install With lazy.nvim
 
@@ -33,14 +33,14 @@ uses your existing `codex` login instead of API keys.
     { "<leader>aa", "<cmd>PiAgentActions<cr>", desc = "Pi Agent actions" },
     { "<leader>ac", "<cmd>PiAgentChat Toggle<cr>", desc = "Toggle Pi Agent chat" },
     { "<leader>ai", "<cmd>PiAgent<cr>", desc = "Pi Agent inline" },
-    { "<leader>aq", "<cmd>PiAgentAsk<cr>", desc = "Ask Codex" },
+    { "<leader>aq", "<cmd>PiAgentAsk<cr>", desc = "Ask Pi Agent" },
     { "<leader>ab", "<cmd>PiAgentBuffer<cr>", desc = "Ask with buffer" },
     { "<leader>as", ":PiAgentSelection<cr>", mode = "v", desc = "Ask with selection" },
     { "<leader>ae", ":PiAgentEdit<cr>", mode = "v", desc = "Edit selection" },
-    { "<leader>aC", "<cmd>PiAgentCLI<cr>", desc = "Open Codex CLI" },
+    { "<leader>aC", "<cmd>PiAgentCLI<cr>", desc = "Open Pi Agent CLI" },
     { "<leader>a:", "<cmd>PiAgentCmd<cr>", desc = "Generate Vim command" },
-    { "<leader>al", "<cmd>PiAgentLogin<cr>", desc = "Codex login" },
-    { "<leader>at", "<cmd>PiAgentStatus<cr>", desc = "Codex status" },
+    { "<leader>al", "<cmd>PiAgentLogin<cr>", desc = "Pi Agent login" },
+    { "<leader>at", "<cmd>PiAgentStatus<cr>", desc = "Pi Agent status" },
   },
   config = function()
     require("pi_agent").setup()
@@ -57,14 +57,14 @@ uses your existing `codex` login instead of API keys.
 | `:PiAgentChat Toggle` | Toggle the chat buffer. |
 | `:PiAgentChat New` / `Clear` | Reset the current chat. |
 | `:'<,'>PiAgentChat Add` | Add selected text to the chat input. |
-| `:PiAgentCLI [prompt]` | Open interactive Codex in a floating terminal. |
+| `:PiAgentCLI [prompt]` | Open interactive Pi Agent in a floating terminal. |
 | `:PiAgentCmd [request]` | Generate a Vim command and place it on the command line. |
 | `:PiAgentActions` | Open the action palette. |
-| `:PiAgentBuffer [prompt]` | Ask Codex with the current buffer as context. |
-| `:'<,'>PiAgentSelection [prompt]` | Ask Codex with selected lines as context. |
-| `:'<,'>PiAgentEdit [instruction]` | Replace selected lines with Codex output. |
-| `:PiAgentLogin` | Run `codex login --device-auth`. |
-| `:PiAgentStatus` | Check whether Codex auth is ready. |
+| `:PiAgentBuffer [prompt]` | Ask Pi Agent with the current buffer as context. |
+| `:'<,'>PiAgentSelection [prompt]` | Ask Pi Agent with selected lines as context. |
+| `:'<,'>PiAgentEdit [instruction]` | Replace selected lines with Pi Agent output. |
+| `:PiAgentLogin` | Run Pi Agent login. |
+| `:PiAgentStatus` | Check whether Pi Agent auth is ready. |
 
 ## Chat Buffer
 
@@ -77,7 +77,7 @@ Press `q` in normal mode to close the chat window.
 
 ```lua
 require("pi_agent").setup({
-  codex_cmd = "codex",
+  agent_cmd = nil,
   sandbox = "read-only",
   approval = "never",
   model = nil,
@@ -100,5 +100,7 @@ require("pi_agent").setup({
 })
 ```
 
-Authentication is handled by the Codex CLI. This plugin does not store API keys
-or tokens.
+With `agent_cmd = nil`, the plugin uses its bundled `bin/pi-agent` command.
+That backend currently delegates to the local Codex CLI, so auth remains outside
+Neovim and the plugin does not store API keys or tokens. Set `agent_cmd` to a
+different executable when you have a separate Pi Agent runtime.

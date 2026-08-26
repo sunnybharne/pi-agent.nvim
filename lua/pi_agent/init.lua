@@ -1,7 +1,7 @@
 local M = {}
 
 local defaults = {
-  codex_cmd = "codex",
+  agent_cmd = nil,
   model = nil,
   sandbox = "read-only",
   approval = "never",
@@ -88,6 +88,31 @@ end
 
 local function command_exists(name)
   return vim.fn.executable(name) == 1
+end
+
+local function plugin_root()
+  local source = debug.getinfo(1, "S").source
+  if source:sub(1, 1) ~= "@" then
+    return nil
+  end
+
+  return source:sub(2):gsub("/lua/pi_agent/init%.lua$", "")
+end
+
+local function resolve_agent_cmd()
+  if config.agent_cmd and config.agent_cmd ~= "" then
+    return config.agent_cmd
+  end
+
+  local root = plugin_root()
+  if root then
+    local bundled = root .. "/bin/pi-agent"
+    if command_exists(bundled) then
+      return bundled
+    end
+  end
+
+  return "pi-agent"
 end
 
 local function notify(message, level)
@@ -188,13 +213,10 @@ end
 
 local function build_exec_cmd(cwd)
   local cmd = {
-    config.codex_cmd,
+    resolve_agent_cmd(),
     "exec",
-    "--skip-git-repo-check",
     "--cd",
     cwd,
-    "--color",
-    "never",
   }
 
   if config.model then
@@ -206,7 +228,7 @@ local function build_exec_cmd(cwd)
   end
 
   if config.approval then
-    vim.list_extend(cmd, { "--ask-for-approval", config.approval })
+    vim.list_extend(cmd, { "--approval", config.approval })
   end
 
   vim.list_extend(cmd, config.extra_args)
@@ -215,13 +237,14 @@ local function build_exec_cmd(cwd)
   return cmd
 end
 
-local function run_codex(prompt, opts)
+local function run_agent(prompt, opts)
   opts = opts or {}
+  local agent_cmd = resolve_agent_cmd()
 
-  if not command_exists(config.codex_cmd) then
-    notify("codex CLI was not found in PATH.", vim.log.levels.ERROR)
+  if not command_exists(agent_cmd) then
+    notify("pi-agent backend was not found.", vim.log.levels.ERROR)
     if opts.on_exit then
-      opts.on_exit(127, {}, { "codex CLI was not found in PATH." })
+      opts.on_exit(127, {}, { "pi-agent backend was not found." })
     end
     return nil
   end
@@ -251,9 +274,9 @@ local function run_codex(prompt, opts)
   })
 
   if job_id <= 0 then
-    notify("Failed to start codex.", vim.log.levels.ERROR)
+    notify("Failed to start pi-agent.", vim.log.levels.ERROR)
     if opts.on_exit then
-      opts.on_exit(1, {}, { "Failed to start codex." })
+      opts.on_exit(1, {}, { "Failed to start pi-agent." })
     end
     return nil
   end
@@ -282,7 +305,7 @@ local function output_lines(code, stdout, stderr)
     end
 
     if code ~= 0 then
-      table.insert(lines, "Codex returned an error:")
+      table.insert(lines, "Pi Agent returned an error:")
       table.insert(lines, "")
     end
 
@@ -290,7 +313,7 @@ local function output_lines(code, stdout, stderr)
   end
 
   if #lines == 0 then
-    table.insert(lines, "Codex finished with no output.")
+    table.insert(lines, "Pi Agent finished with no output.")
   end
 
   return lines
@@ -349,7 +372,7 @@ local function render_chat()
 
   if state.chat.running then
     table.insert(lines, "## Assistant")
-    table.insert(lines, "Running Codex...")
+    table.insert(lines, "Running Pi Agent...")
     state.chat.input_start = nil
     set_lines(buf, lines, "markdown", false)
     return
@@ -405,7 +428,7 @@ local function send_chat_prompt(prompt)
   state.chat.running = true
   render_chat()
 
-  run_codex(conversation_prompt(), {
+  run_agent(conversation_prompt(), {
     on_exit = function(code, stdout, stderr)
       state.chat.running = false
 
@@ -418,7 +441,7 @@ local function send_chat_prompt(prompt)
       render_chat()
 
       if code ~= 0 then
-        notify("Codex exited with code " .. code .. ".", vim.log.levels.ERROR)
+        notify("Pi Agent exited with code " .. code .. ".", vim.log.levels.ERROR)
       end
     end,
   })
@@ -435,14 +458,14 @@ function M.exec(prompt, opts)
     return
   end
 
-  local buf = render_result(opts.title or "Pi Agent", { "Running Codex..." })
+  local buf = render_result(opts.title or "Pi Agent", { "Running Pi Agent..." })
 
-  run_codex(prompt, {
+  run_agent(prompt, {
     cwd = opts.cwd,
     on_exit = function(code, stdout, stderr)
       set_lines(buf, output_lines(code, stdout, stderr), "markdown", false)
       if code ~= 0 then
-        notify("Codex exited with code " .. code .. ".", vim.log.levels.ERROR)
+        notify("Pi Agent exited with code " .. code .. ".", vim.log.levels.ERROR)
       end
     end,
   })
@@ -507,7 +530,7 @@ function M.edit_selection(prompt, line1, line2)
       current_context(selected, "selection", source_buf),
     }, "\n")
 
-    run_codex(request, {
+    run_agent(request, {
       on_exit = function(code, stdout, stderr)
         if code ~= 0 then
           render_result("Pi Agent Edit Error", output_lines(code, stdout, stderr))
@@ -521,7 +544,7 @@ function M.edit_selection(prompt, line1, line2)
 
         local replacement = strip_code_fence(stdout)
         if #replacement == 0 then
-          notify("Codex returned no replacement text.", vim.log.levels.WARN)
+          notify("Pi Agent returned no replacement text.", vim.log.levels.WARN)
           return
         end
 
@@ -629,13 +652,14 @@ function M.chat_toggle(force)
 end
 
 function M.open(prompt)
-  if not command_exists(config.codex_cmd) then
-    notify("codex CLI was not found in PATH.", vim.log.levels.ERROR)
+  local agent_cmd = resolve_agent_cmd()
+  if not command_exists(agent_cmd) then
+    notify("pi-agent backend was not found.", vim.log.levels.ERROR)
     return
   end
 
   local cwd = vim.fn.getcwd()
-  local cmd = { config.codex_cmd, "--cd", cwd }
+  local cmd = { agent_cmd, "cli", "--cd", cwd }
   vim.list_extend(cmd, config.terminal_args)
 
   prompt = trim(prompt)
@@ -662,11 +686,11 @@ function M.command(prompt)
     }, "\n")
 
     local buf = render_result("Pi Agent Command", { "Generating command..." })
-    run_codex(request, {
+    run_agent(request, {
       on_exit = function(code, stdout, stderr)
         if code ~= 0 then
           set_lines(buf, output_lines(code, stdout, stderr), "markdown", false)
-          notify("Codex exited with code " .. code .. ".", vim.log.levels.ERROR)
+          notify("Pi Agent exited with code " .. code .. ".", vim.log.levels.ERROR)
           return
         end
 
@@ -698,7 +722,7 @@ function M.actions(line1, line2, has_range)
     { label = "Inline: Ask", run = function() M.inline("", line1, line2, has_range) end },
     { label = "Context: Current buffer", run = function() M.buffer("") end },
     { label = "Command: Generate Vim command", run = function() M.command("") end },
-    { label = "CLI: Open Codex", run = function() M.open("") end },
+    { label = "CLI: Open Pi Agent", run = function() M.open("") end },
     { label = "Auth: Login", run = function() M.login() end },
     { label = "Auth: Status", run = function() M.status() end },
   }
@@ -722,30 +746,32 @@ function M.actions(line1, line2, has_range)
 end
 
 function M.login()
-  if not command_exists(config.codex_cmd) then
-    notify("codex CLI was not found in PATH.", vim.log.levels.ERROR)
+  local agent_cmd = resolve_agent_cmd()
+  if not command_exists(agent_cmd) then
+    notify("pi-agent backend was not found.", vim.log.levels.ERROR)
     return
   end
 
   local buf = open_float("Pi Agent Login")
-  vim.fn.termopen({ config.codex_cmd, "login", "--device-auth" })
+  vim.fn.termopen({ agent_cmd, "login" })
   vim.bo[buf].bufhidden = "wipe"
   vim.cmd("startinsert")
 end
 
 function M.status()
-  if not command_exists(config.codex_cmd) then
-    notify("codex CLI was not found in PATH.", vim.log.levels.ERROR)
+  local agent_cmd = resolve_agent_cmd()
+  if not command_exists(agent_cmd) then
+    notify("pi-agent backend was not found.", vim.log.levels.ERROR)
     return
   end
 
   local buf = open_float("Pi Agent Status")
-  set_lines(buf, { "Checking Codex status..." }, "markdown", false)
+  set_lines(buf, { "Checking Pi Agent status..." }, "markdown", false)
 
   local stdout = {}
   local stderr = {}
 
-  local job_id = vim.fn.jobstart({ config.codex_cmd, "login", "status" }, {
+  local job_id = vim.fn.jobstart({ agent_cmd, "status" }, {
     stdout_buffered = true,
     stderr_buffered = true,
     on_stdout = function(_, data)
@@ -756,7 +782,7 @@ function M.status()
     end,
     on_exit = function(_, code)
       vim.schedule(function()
-        local lines = { "```text", "$ codex login status" }
+        local lines = { "```text", "$ pi-agent status" }
 
         if #stdout > 0 then
           table.insert(lines, "")
@@ -772,14 +798,14 @@ function M.status()
         set_lines(buf, lines, "markdown", false)
 
         if code ~= 0 then
-          notify("Codex status check exited with code " .. code .. ".", vim.log.levels.WARN)
+          notify("Pi Agent status check exited with code " .. code .. ".", vim.log.levels.WARN)
         end
       end)
     end,
   })
 
   if job_id <= 0 then
-    notify("Failed to start codex.", vim.log.levels.ERROR)
+    notify("Failed to start pi-agent.", vim.log.levels.ERROR)
   end
 end
 
@@ -803,11 +829,11 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("PiAgentCLI", function(command)
     M.open(command.args)
-  end, { nargs = "*", desc = "Open Codex in a floating terminal" })
+  end, { nargs = "*", desc = "Open Pi Agent in a floating terminal" })
 
   vim.api.nvim_create_user_command("PiAgentCmd", function(command)
     M.command(command.args)
-  end, { nargs = "*", desc = "Generate a Vim command with Codex" })
+  end, { nargs = "*", desc = "Generate a Vim command with Pi Agent" })
 
   vim.api.nvim_create_user_command("PiAgentActions", function(command)
     M.actions(command.line1, command.line2, command.range > 0)
@@ -815,27 +841,27 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("PiAgentAsk", function(command)
     M.ask(command.args)
-  end, { nargs = "*", desc = "Ask Codex and show the response" })
+  end, { nargs = "*", desc = "Ask Pi Agent and show the response" })
 
   vim.api.nvim_create_user_command("PiAgentBuffer", function(command)
     M.buffer(command.args)
-  end, { nargs = "*", desc = "Ask Codex with the current buffer as context" })
+  end, { nargs = "*", desc = "Ask Pi Agent with the current buffer as context" })
 
   vim.api.nvim_create_user_command("PiAgentSelection", function(command)
     M.selection(command.args, command.line1, command.line2)
-  end, { nargs = "*", range = true, desc = "Ask Codex with selected lines as context" })
+  end, { nargs = "*", range = true, desc = "Ask Pi Agent with selected lines as context" })
 
   vim.api.nvim_create_user_command("PiAgentEdit", function(command)
     M.edit_selection(command.args, command.line1, command.line2)
-  end, { nargs = "*", range = true, desc = "Edit selected lines with Codex" })
+  end, { nargs = "*", range = true, desc = "Edit selected lines with Pi Agent" })
 
   vim.api.nvim_create_user_command("PiAgentLogin", function()
     M.login()
-  end, { desc = "Run codex login --device-auth" })
+  end, { desc = "Run Pi Agent login" })
 
   vim.api.nvim_create_user_command("PiAgentStatus", function()
     M.status()
-  end, { desc = "Check Codex authentication status" })
+  end, { desc = "Check Pi Agent authentication status" })
 end
 
 return M

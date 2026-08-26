@@ -1,4 +1,4 @@
-*pi-agent.nvim* A small Neovim assistant backed by the local Codex CLI
+*pi-agent.nvim* A small Neovim assistant backed by Pi Agent
 
 ==============================================================================
 COMMANDS                                                   *pi-agent-commands*
@@ -22,7 +22,7 @@ COMMANDS                                                   *pi-agent-commands*
   buffer is added.
 
 :PiAgentCLI [prompt]~
-  Open interactive Codex in a floating terminal.
+  Open interactive Pi Agent in a floating terminal.
 
 :PiAgentCmd [request]~
   Generate one Vim command and place it on the command line without executing
@@ -32,19 +32,19 @@ COMMANDS                                                   *pi-agent-commands*
   Open the action palette.
 
 :PiAgentBuffer [prompt]~
-  Run `codex exec` with the current buffer included as context.
+  Ask Pi Agent with the current buffer included as context.
 
 :'<,'>PiAgentSelection [prompt]~
-  Run `codex exec` with the selected lines included as context.
+  Ask Pi Agent with the selected lines included as context.
 
 :'<,'>PiAgentEdit [instruction]~
-  Replace the selected lines with Codex output.
+  Replace the selected lines with Pi Agent output.
 
 :PiAgentLogin~
-  Open `codex login --device-auth` in a floating terminal.
+  Open Pi Agent login in a floating terminal.
 
 :PiAgentStatus~
-  Check whether Codex authentication is ready.
+  Check whether Pi Agent authentication is ready.
 
 ==============================================================================
 CHAT BUFFER                                             *pi-agent-chat-buffer*
@@ -63,7 +63,7 @@ CONFIGURATION                                           *pi-agent-configuration*
 Use:
 >
   require("pi_agent").setup({
-    codex_cmd = "codex",
+    agent_cmd = nil,
     sandbox = "read-only",
     approval = "never",
     model = nil,
@@ -86,7 +86,9 @@ Use:
   })
 <
 
-Authentication is handled by the Codex CLI. This plugin does not store API keys
-or tokens.
+With `agent_cmd = nil`, the plugin uses its bundled `bin/pi-agent` command.
+That backend currently delegates to the local Codex CLI, so auth remains outside
+Neovim and the plugin does not store API keys or tokens. Set `agent_cmd` to a
+different executable when you have a separate Pi Agent runtime.
 
  vim:tw=78:ts=2:sw=2:et:ft=help:norl:
