@@ -5,6 +5,8 @@ A personal Neovim assistant that talks to the `pi-agent` backend.
 The command shape is inspired by CodeCompanion, but this plugin stays small.
 Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
+Documentation site: https://sunnybharne.github.io/pi-agent.nvim/
+
 ## Requirements
 
 - Neovim 0.10+
