@@ -3,6 +3,9 @@
 ==============================================================================
 COMMANDS                                                   *pi-agent-commands*
 
+:PiAgentPanel~
+  Open the Pi Agent panel on the right.
+
 :PiAgent [prompt]~
   Inline-style interaction. With a visual range, selected text is included as
   context.

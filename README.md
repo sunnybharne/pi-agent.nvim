@@ -17,6 +17,7 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 {
   "sunnybharne/pi-agent.nvim",
   cmd = {
+    "PiAgentPanel",
     "PiAgent",
     "PiAgentChat",
     "PiAgentCLI",
@@ -30,6 +31,7 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
     "PiAgentStatus",
   },
   keys = {
+    { "<leader>cc", "<cmd>PiAgentPanel<cr>", desc = "Open Pi Agent panel" },
     { "<leader>aa", "<cmd>PiAgentActions<cr>", desc = "Pi Agent actions" },
     { "<leader>ac", "<cmd>PiAgentChat Toggle<cr>", desc = "Toggle Pi Agent chat" },
     { "<leader>ai", "<cmd>PiAgent<cr>", desc = "Pi Agent inline" },
@@ -52,6 +54,7 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 | Command | Purpose |
 | --- | --- |
+| `:PiAgentPanel` | Open the Pi Agent panel on the right. |
 | `:PiAgent [prompt]` | Inline-style prompt. With a visual range, selected text is included as context. |
 | `:PiAgentChat [prompt]` | Open the chat buffer, or send a prompt to it. |
 | `:PiAgentChat Toggle` | Toggle the chat buffer. |

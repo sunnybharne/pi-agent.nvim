@@ -651,6 +651,10 @@ function M.chat_toggle(force)
   render_chat()
 end
 
+function M.panel()
+  render_chat()
+end
+
 function M.open(prompt)
   local agent_cmd = resolve_agent_cmd()
   if not command_exists(agent_cmd) then
@@ -811,6 +815,10 @@ end
 
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+
+  vim.api.nvim_create_user_command("PiAgentPanel", function()
+    M.panel()
+  end, { desc = "Open the Pi Agent panel on the right" })
 
   vim.api.nvim_create_user_command("PiAgent", function(command)
     M.inline(command.args, command.line1, command.line2, command.range > 0)
