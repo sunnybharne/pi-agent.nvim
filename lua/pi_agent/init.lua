@@ -18,7 +18,7 @@ local defaults = {
     min_width = 52,
   },
   mappings = {
-    submit = { "<CR>", "<C-s>" },
+    submit = "<CR>",
     close = "q",
   },
 }
