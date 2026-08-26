@@ -3,6 +3,8 @@ local M = {}
 local defaults = {
   agent_cmd = nil,
   model = nil,
+  effort = nil,
+  speed = nil,
   sandbox = "read-only",
   approval = "never",
   extra_args = {},
@@ -31,6 +33,14 @@ local state = {
     messages = {},
     input_start = nil,
     running = false,
+    started_at = nil,
+    last_response = nil,
+    metadata = {
+      loaded = false,
+      model = nil,
+      effort = nil,
+      speed = nil,
+    },
   },
 }
 
@@ -125,6 +135,73 @@ local function as_list(value)
   end
 
   return { value }
+end
+
+local function now_ms()
+  return math.floor(((vim.uv or vim.loop).hrtime()) / 1000000)
+end
+
+local function format_duration(ms)
+  local seconds = ms / 1000
+  if seconds < 10 then
+    return string.format("%.1fs", seconds)
+  end
+
+  return string.format("%ds", math.floor(seconds + 0.5))
+end
+
+local function refresh_metadata()
+  if state.chat.metadata.loaded then
+    return
+  end
+
+  state.chat.metadata.loaded = true
+  local agent_cmd = resolve_agent_cmd()
+  if not command_exists(agent_cmd) then
+    return
+  end
+
+  local ok, lines = pcall(vim.fn.systemlist, { agent_cmd, "metadata" })
+  if not ok or vim.v.shell_error ~= 0 then
+    return
+  end
+
+  for _, line in ipairs(lines) do
+    local key, value = line:match("^([^%s]+)%s+(.+)$")
+    if key and value and value ~= "" then
+      state.chat.metadata[key] = value
+    end
+  end
+end
+
+local function runtime_value(key)
+  local configured = config[key]
+  if configured and configured ~= "" then
+    return configured
+  end
+
+  local detected = state.chat.metadata[key]
+  if detected and detected ~= "" then
+    return detected
+  end
+
+  return "default"
+end
+
+local function last_response_label()
+  if state.chat.running and state.chat.started_at then
+    return "running " .. format_duration(now_ms() - state.chat.started_at)
+  end
+
+  if not state.chat.last_response then
+    return "not run yet"
+  end
+
+  return string.format(
+    "%s, %d chars/s",
+    format_duration(state.chat.last_response.duration_ms),
+    state.chat.last_response.chars_per_second
+  )
 end
 
 local function prompt_with_input(input_prompt, callback)
@@ -229,6 +306,14 @@ local function build_exec_cmd(cwd)
 
   if config.model then
     vim.list_extend(cmd, { "--model", config.model })
+  end
+
+  if config.effort then
+    vim.list_extend(cmd, { "--effort", config.effort })
+  end
+
+  if config.speed then
+    vim.list_extend(cmd, { "--speed", config.speed })
   end
 
   if config.sandbox then
@@ -373,8 +458,20 @@ end
 local function render_chat()
   local buf = open_chat_window()
   setup_chat_keymaps(buf)
+  refresh_metadata()
 
-  local lines = { "# Pi Agent Chat", "" }
+  local lines = {
+    "# Pi Agent Chat",
+    "",
+    string.format(
+      "Model: %s | Effort: %s | Speed: %s | Last: %s",
+      runtime_value("model"),
+      runtime_value("effort"),
+      runtime_value("speed"),
+      last_response_label()
+    ),
+    "",
+  }
 
   for _, message in ipairs(state.chat.messages) do
     table.insert(lines, "## " .. message.role)
@@ -438,6 +535,7 @@ local function send_chat_prompt(prompt)
   ensure_chat()
   table.insert(state.chat.messages, { role = "User", content = prompt })
   state.chat.running = true
+  state.chat.started_at = now_ms()
   render_chat()
 
   run_agent(conversation_prompt(), {
@@ -445,9 +543,18 @@ local function send_chat_prompt(prompt)
       state.chat.running = false
 
       local lines = output_lines(code, stdout, stderr)
+      local duration_ms = math.max(now_ms() - (state.chat.started_at or now_ms()), 1)
+      local response_text = table.concat(lines, "\n")
+      state.chat.started_at = nil
+      state.chat.last_response = {
+        duration_ms = duration_ms,
+        chars = #response_text,
+        chars_per_second = math.floor((#response_text / duration_ms) * 1000 + 0.5),
+      }
+
       table.insert(state.chat.messages, {
         role = "Assistant",
-        content = table.concat(lines, "\n"),
+        content = response_text,
       })
 
       render_chat()

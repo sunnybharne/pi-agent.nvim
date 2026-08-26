@@ -76,6 +76,15 @@ Open it with `:PiAgentChat` or `:PiAgentChat Toggle`.
 Type below `## You`, then press Enter in normal or insert mode to submit.
 Press `q` in normal mode to close the chat window.
 
+The top of the panel shows the runtime target:
+
+```text
+Model: gpt-5.5 | Effort: xhigh | Speed: priority | Last: not run yet
+```
+
+`Speed` is the configured runtime service tier. `Last` shows the most recent
+response time and output throughput after a reply completes.
+
 ## Configuration
 
 ```lua
@@ -84,6 +93,8 @@ require("pi_agent").setup({
   sandbox = "read-only",
   approval = "never",
   model = nil,
+  effort = nil,
+  speed = nil,
   extra_args = {},
   terminal_args = {},
   system_prompt = "You are Pi Agent, a concise AI coding assistant running inside Neovim.",
