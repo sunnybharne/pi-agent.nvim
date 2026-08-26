@@ -73,7 +73,8 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 Open it with `:PiAgentChat` or `:PiAgentChat Toggle`.
 
-Type below `## You`, then press `<C-s>` in normal or insert mode to submit.
+Type below `## You`, then press Enter in normal or insert mode to submit.
+`<C-s>` is also mapped as a fallback submit key.
 Press `q` in normal mode to close the chat window.
 
 ## Configuration
@@ -97,7 +98,7 @@ require("pi_agent").setup({
     min_width = 52,
   },
   mappings = {
-    submit = "<C-s>",
+    submit = { "<CR>", "<C-s>" },
     close = "q",
   },
 })

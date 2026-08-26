@@ -57,8 +57,9 @@ Open the chat with:
   :PiAgentChat
 <
 
-Type below the `## You` heading and press `<C-s>` in normal or insert mode to
-submit. Press `q` in normal mode to close the chat window.
+Type below the `## You` heading and press Enter in normal or insert mode to
+submit. `<C-s>` is also mapped as a fallback submit key. Press `q` in normal
+mode to close the chat window.
 
 ==============================================================================
 CONFIGURATION                                           *pi-agent-configuration*
@@ -83,7 +84,7 @@ Use:
       min_width = 52,
     },
     mappings = {
-      submit = "<C-s>",
+      submit = { "<CR>", "<C-s>" },
       close = "q",
     },
   })

@@ -18,7 +18,7 @@ local defaults = {
     min_width = 52,
   },
   mappings = {
-    submit = "<C-s>",
+    submit = { "<CR>", "<C-s>" },
     close = "q",
   },
 }
@@ -117,6 +117,14 @@ end
 
 local function notify(message, level)
   vim.notify(message, level or vim.log.levels.INFO, { title = "Pi Agent" })
+end
+
+local function as_list(value)
+  if type(value) == "table" then
+    return value
+  end
+
+  return { value }
 end
 
 local function prompt_with_input(input_prompt, callback)
@@ -344,14 +352,18 @@ local function setup_chat_keymaps(buf)
 
   vim.b[buf].pi_agent_keymaps = true
 
-  vim.keymap.set("n", config.mappings.submit, function()
-    M.chat_submit()
-  end, { buffer = buf, desc = "Submit Pi Agent chat prompt" })
+  for _, submit_key in ipairs(as_list(config.mappings.submit)) do
+    if submit_key and submit_key ~= "" then
+      vim.keymap.set("n", submit_key, function()
+        M.chat_submit()
+      end, { buffer = buf, desc = "Submit Pi Agent chat prompt" })
 
-  vim.keymap.set("i", config.mappings.submit, function()
-    vim.cmd("stopinsert")
-    M.chat_submit()
-  end, { buffer = buf, desc = "Submit Pi Agent chat prompt" })
+      vim.keymap.set("i", submit_key, function()
+        vim.cmd("stopinsert")
+        M.chat_submit()
+      end, { buffer = buf, desc = "Submit Pi Agent chat prompt" })
+    end
+  end
 
   vim.keymap.set("n", config.mappings.close, function()
     M.chat_toggle(false)
