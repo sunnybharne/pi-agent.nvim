@@ -18,6 +18,7 @@ local defaults = {
   chat = {
     width = 0.38,
     min_width = 52,
+    storage_dir = nil,
   },
   mappings = {
     submit = "<CR>",
@@ -28,19 +29,14 @@ local defaults = {
 local config = vim.deepcopy(defaults)
 
 local state = {
-  chat = {
-    buf = nil,
-    messages = {},
-    input_start = nil,
-    running = false,
-    started_at = nil,
-    last_response = nil,
-    metadata = {
-      loaded = false,
-      model = nil,
-      effort = nil,
-      speed = nil,
-    },
+  chat = nil,
+  chats = {},
+  active_root = nil,
+  metadata = {
+    loaded = false,
+    model = nil,
+    effort = nil,
+    speed = nil,
   },
 }
 
@@ -100,6 +96,159 @@ local function command_exists(name)
   return vim.fn.executable(name) == 1
 end
 
+local function normalize_path(path)
+  path = vim.fn.expand(path or vim.fn.getcwd())
+
+  if vim.fs and vim.fs.normalize then
+    path = vim.fs.normalize(path)
+  else
+    path = vim.fn.fnamemodify(path, ":p")
+  end
+
+  if path ~= "/" then
+    path = path:gsub("/+$", "")
+  end
+
+  return path
+end
+
+local function buffer_dir(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+  local name = vim.api.nvim_buf_get_name(buf)
+
+  if name ~= "" then
+    if vim.fn.isdirectory(name) == 1 then
+      return normalize_path(name)
+    end
+
+    return normalize_path(vim.fn.fnamemodify(name, ":p:h"))
+  end
+
+  return normalize_path(vim.fn.getcwd())
+end
+
+local function project_root(start)
+  start = normalize_path(start or vim.fn.getcwd())
+
+  local ok, lines = pcall(vim.fn.systemlist, { "git", "-C", start, "rev-parse", "--show-toplevel" })
+  if ok and vim.v.shell_error == 0 and lines and lines[1] and trim(lines[1]) ~= "" then
+    return normalize_path(lines[1])
+  end
+
+  return start
+end
+
+local function root_for_context(buf)
+  buf = buf or vim.api.nvim_get_current_buf()
+
+  if vim.api.nvim_buf_is_valid(buf) then
+    local ok, root = pcall(function()
+      return vim.b[buf].pi_agent_root
+    end)
+    if ok and root and root ~= "" then
+      return root
+    end
+  end
+
+  return project_root(buffer_dir(buf))
+end
+
+local function chat_storage_dir()
+  local configured = config.chat and config.chat.storage_dir
+  if configured and configured ~= "" then
+    return normalize_path(configured)
+  end
+
+  return normalize_path(vim.fn.stdpath("data") .. "/pi-agent/chats")
+end
+
+local function chat_path(root)
+  return chat_storage_dir() .. "/" .. vim.fn.sha256(root) .. ".json"
+end
+
+local function new_chat(root)
+  return {
+    root = root,
+    buf = nil,
+    messages = {},
+    input_start = nil,
+    running = false,
+    started_at = nil,
+    last_response = nil,
+  }
+end
+
+local function load_chat(root)
+  local chat = new_chat(root)
+  local path = chat_path(root)
+
+  if vim.fn.filereadable(path) ~= 1 then
+    return chat
+  end
+
+  local ok_read, lines = pcall(vim.fn.readfile, path)
+  if not ok_read then
+    return chat
+  end
+
+  local ok_decode, data = pcall(vim.json.decode, table.concat(lines, "\n"))
+  if not ok_decode or type(data) ~= "table" then
+    return chat
+  end
+
+  if type(data.messages) == "table" then
+    for _, message in ipairs(data.messages) do
+      if type(message) == "table" and type(message.role) == "string" and type(message.content) == "string" then
+        table.insert(chat.messages, {
+          role = message.role,
+          content = message.content,
+        })
+      end
+    end
+  end
+
+  if type(data.last_response) == "table" then
+    chat.last_response = {
+      duration_ms = tonumber(data.last_response.duration_ms) or 0,
+      chars = tonumber(data.last_response.chars) or 0,
+      chars_per_second = tonumber(data.last_response.chars_per_second) or 0,
+    }
+  end
+
+  return chat
+end
+
+local function save_chat(chat)
+  if not chat or not chat.root then
+    return
+  end
+
+  local ok_encode, encoded = pcall(vim.json.encode, {
+    root = chat.root,
+    messages = chat.messages,
+    last_response = chat.last_response,
+  })
+  if not ok_encode then
+    return
+  end
+
+  local directory = chat_storage_dir()
+  vim.fn.mkdir(directory, "p")
+  pcall(vim.fn.writefile, { encoded }, chat_path(chat.root))
+end
+
+local function chat_for_root(root)
+  root = project_root(root or root_for_context())
+
+  if not state.chats[root] then
+    state.chats[root] = load_chat(root)
+  end
+
+  state.active_root = root
+  state.chat = state.chats[root]
+  return state.chat
+end
+
 local function plugin_root()
   local source = debug.getinfo(1, "S").source
   if source:sub(1, 1) ~= "@" then
@@ -151,11 +300,11 @@ local function format_duration(ms)
 end
 
 local function refresh_metadata()
-  if state.chat.metadata.loaded then
+  if state.metadata.loaded then
     return
   end
 
-  state.chat.metadata.loaded = true
+  state.metadata.loaded = true
   local agent_cmd = resolve_agent_cmd()
   if not command_exists(agent_cmd) then
     return
@@ -169,7 +318,7 @@ local function refresh_metadata()
   for _, line in ipairs(lines) do
     local key, value = line:match("^([^%s]+)%s+(.+)$")
     if key and value and value ~= "" then
-      state.chat.metadata[key] = value
+      state.metadata[key] = value
     end
   end
 end
@@ -180,7 +329,7 @@ local function runtime_value(key)
     return configured
   end
 
-  local detected = state.chat.metadata[key]
+  local detected = state.metadata[key]
   if detected and detected ~= "" then
     return detected
   end
@@ -188,19 +337,19 @@ local function runtime_value(key)
   return "default"
 end
 
-local function last_response_label()
-  if state.chat.running and state.chat.started_at then
-    return "running " .. format_duration(now_ms() - state.chat.started_at)
+local function last_response_label(chat)
+  if chat.running and chat.started_at then
+    return "running " .. format_duration(now_ms() - chat.started_at)
   end
 
-  if not state.chat.last_response then
+  if not chat.last_response then
     return "not run yet"
   end
 
   return string.format(
     "%s, %d chars/s",
-    format_duration(state.chat.last_response.duration_ms),
-    state.chat.last_response.chars_per_second
+    format_duration(chat.last_response.duration_ms),
+    chat.last_response.chars_per_second
   )
 end
 
@@ -254,28 +403,32 @@ local function open_float(title)
   return buf
 end
 
-local function open_chat_window()
-  if state.chat.buf and vim.api.nvim_buf_is_valid(state.chat.buf) then
-    local win = find_window(state.chat.buf)
+local function open_chat_window(root)
+  local chat = chat_for_root(root or root_for_context())
+
+  if chat.buf and vim.api.nvim_buf_is_valid(chat.buf) then
+    vim.b[chat.buf].pi_agent_root = chat.root
+    local win = find_window(chat.buf)
     if win then
       vim.api.nvim_set_current_win(win)
-      return state.chat.buf
+      return chat.buf, chat
     end
   else
-    state.chat.buf = vim.api.nvim_create_buf(false, true)
-    configure_buffer(state.chat.buf, "markdown")
+    chat.buf = vim.api.nvim_create_buf(false, true)
+    configure_buffer(chat.buf, "markdown")
   end
 
   vim.cmd("botright vertical new")
   local win = vim.api.nvim_get_current_win()
-  vim.api.nvim_win_set_buf(win, state.chat.buf)
+  vim.api.nvim_win_set_buf(win, chat.buf)
+  vim.b[chat.buf].pi_agent_root = chat.root
 
   local width = size(config.chat.width, vim.o.columns)
   width = math.max(config.chat.min_width, width)
   width = math.min(width, math.max(20, vim.o.columns - 20))
   pcall(vim.api.nvim_win_set_width, win, width)
 
-  return state.chat.buf
+  return chat.buf, chat
 end
 
 local function current_context(lines, label, source_buf)
@@ -342,7 +495,7 @@ local function run_agent(prompt, opts)
     return nil
   end
 
-  local cwd = opts.cwd or vim.fn.getcwd()
+  local cwd = opts.cwd or root_for_context()
   local stdout = {}
   local stderr = {}
 
@@ -455,65 +608,66 @@ local function setup_chat_keymaps(buf)
   end, { buffer = buf, desc = "Close Pi Agent chat" })
 end
 
-local function render_chat()
-  local buf = open_chat_window()
+local function render_chat(root)
+  local buf, chat = open_chat_window(root)
   setup_chat_keymaps(buf)
   refresh_metadata()
 
   local lines = {
     "# Pi Agent Chat",
     "",
+    "Root: " .. chat.root,
     string.format(
       "Model: %s | Effort: %s | Speed: %s | Last: %s",
       runtime_value("model"),
       runtime_value("effort"),
       runtime_value("speed"),
-      last_response_label()
+      last_response_label(chat)
     ),
     "",
   }
 
-  for _, message in ipairs(state.chat.messages) do
+  for _, message in ipairs(chat.messages) do
     table.insert(lines, "## " .. message.role)
     vim.list_extend(lines, split_lines(message.content))
     table.insert(lines, "")
   end
 
-  if state.chat.running then
+  if chat.running then
     table.insert(lines, "## Assistant")
     table.insert(lines, "Running Pi Agent...")
-    state.chat.input_start = nil
+    chat.input_start = nil
     set_lines(buf, lines, "markdown", false)
     return
   end
 
   table.insert(lines, "## You")
-  state.chat.input_start = #lines
+  chat.input_start = #lines
   table.insert(lines, "")
   set_lines(buf, lines, "markdown", true)
 
-  local input_line = state.chat.input_start + 1
+  local input_line = chat.input_start + 1
   pcall(vim.api.nvim_win_set_cursor, 0, { input_line, 0 })
 end
 
-local function ensure_chat()
-  local buf = open_chat_window()
+local function ensure_chat(root)
+  local buf, chat = open_chat_window(root)
   setup_chat_keymaps(buf)
 
   if vim.api.nvim_buf_line_count(buf) == 1 and vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] == "" then
-    render_chat()
+    render_chat(chat.root)
   end
 
-  return buf
+  return buf, chat
 end
 
-local function conversation_prompt()
+local function conversation_prompt(chat)
   local parts = {
     config.system_prompt,
     "Continue this Neovim assistant chat. Answer the latest user message directly.",
   }
 
-  for _, message in ipairs(state.chat.messages) do
+  for _, message in ipairs(chat.messages) do
     table.insert(parts, "")
     table.insert(parts, message.role .. ":")
     table.insert(parts, message.content)
@@ -525,39 +679,45 @@ local function conversation_prompt()
   return table.concat(parts, "\n")
 end
 
-local function send_chat_prompt(prompt)
+local function send_chat_prompt(prompt, root)
   prompt = trim(prompt)
   if prompt == "" then
-    prompt_with_input("Pi Agent chat: ", send_chat_prompt)
+    prompt_with_input("Pi Agent chat: ", function(input)
+      send_chat_prompt(input, root)
+    end)
     return
   end
 
-  ensure_chat()
-  table.insert(state.chat.messages, { role = "User", content = prompt })
-  state.chat.running = true
-  state.chat.started_at = now_ms()
-  render_chat()
+  local chat = chat_for_root(root or root_for_context())
+  ensure_chat(chat.root)
+  table.insert(chat.messages, { role = "User", content = prompt })
+  chat.running = true
+  chat.started_at = now_ms()
+  save_chat(chat)
+  render_chat(chat.root)
 
-  run_agent(conversation_prompt(), {
+  run_agent(conversation_prompt(chat), {
+    cwd = chat.root,
     on_exit = function(code, stdout, stderr)
-      state.chat.running = false
+      chat.running = false
 
       local lines = output_lines(code, stdout, stderr)
-      local duration_ms = math.max(now_ms() - (state.chat.started_at or now_ms()), 1)
+      local duration_ms = math.max(now_ms() - (chat.started_at or now_ms()), 1)
       local response_text = table.concat(lines, "\n")
-      state.chat.started_at = nil
-      state.chat.last_response = {
+      chat.started_at = nil
+      chat.last_response = {
         duration_ms = duration_ms,
         chars = #response_text,
         chars_per_second = math.floor((#response_text / duration_ms) * 1000 + 0.5),
       }
 
-      table.insert(state.chat.messages, {
+      table.insert(chat.messages, {
         role = "Assistant",
         content = response_text,
       })
 
-      render_chat()
+      save_chat(chat)
+      render_chat(chat.root)
 
       if code ~= 0 then
         notify("Pi Agent exited with code " .. code .. ".", vim.log.levels.ERROR)
@@ -569,9 +729,11 @@ end
 function M.exec(prompt, opts)
   opts = opts or {}
   prompt = trim(prompt)
+  local cwd = opts.cwd or root_for_context()
 
   if prompt == "" then
     prompt_with_input("Pi Agent prompt: ", function(input)
+      opts.cwd = cwd
       M.exec(input, opts)
     end)
     return
@@ -580,7 +742,7 @@ function M.exec(prompt, opts)
   local buf = render_result(opts.title or "Pi Agent", { "Running Pi Agent..." })
 
   run_agent(prompt, {
-    cwd = opts.cwd,
+    cwd = cwd,
     on_exit = function(code, stdout, stderr)
       set_lines(buf, output_lines(code, stdout, stderr), "markdown", false)
       if code ~= 0 then
@@ -604,11 +766,12 @@ end
 
 function M.buffer(prompt)
   local source_buf = vim.api.nvim_get_current_buf()
+  local cwd = root_for_context(source_buf)
   local lines = vim.api.nvim_buf_get_lines(source_buf, 0, -1, false)
   local full_prompt = trim(prompt)
 
   local function run(input)
-    M.exec(input .. current_context(lines, "buffer", source_buf), { title = "Pi Agent Buffer" })
+    M.exec(input .. current_context(lines, "buffer", source_buf), { title = "Pi Agent Buffer", cwd = cwd })
   end
 
   if full_prompt == "" then
@@ -620,11 +783,12 @@ end
 
 function M.selection(prompt, line1, line2)
   local source_buf = vim.api.nvim_get_current_buf()
+  local cwd = root_for_context(source_buf)
   local lines = vim.api.nvim_buf_get_lines(source_buf, line1 - 1, line2, false)
   local full_prompt = trim(prompt)
 
   local function run(input)
-    M.exec(input .. current_context(lines, "selection", source_buf), { title = "Pi Agent Selection" })
+    M.exec(input .. current_context(lines, "selection", source_buf), { title = "Pi Agent Selection", cwd = cwd })
   end
 
   if full_prompt == "" then
@@ -636,6 +800,7 @@ end
 
 function M.edit_selection(prompt, line1, line2)
   local source_buf = vim.api.nvim_get_current_buf()
+  local cwd = root_for_context(source_buf)
   local selected = vim.api.nvim_buf_get_lines(source_buf, line1 - 1, line2, false)
   local full_prompt = trim(prompt)
 
@@ -650,6 +815,7 @@ function M.edit_selection(prompt, line1, line2)
     }, "\n")
 
     run_agent(request, {
+      cwd = cwd,
       on_exit = function(code, stdout, stderr)
         if code ~= 0 then
           render_result("Pi Agent Edit Error", output_lines(code, stdout, stderr))
@@ -681,44 +847,50 @@ function M.edit_selection(prompt, line1, line2)
 end
 
 function M.chat(prompt, line1, line2, has_range)
+  local source_buf = vim.api.nvim_get_current_buf()
+  local root = root_for_context(source_buf)
   local args = trim(prompt)
   local subcommand = args:match("^(%S+)")
   local lower = subcommand and subcommand:lower() or ""
 
   if lower == "toggle" then
-    M.chat_toggle()
+    M.chat_toggle(nil, root)
     return
   end
 
   if lower == "new" or lower == "clear" then
-    state.chat.messages = {}
-    state.chat.running = false
-    render_chat()
+    local chat = chat_for_root(root)
+    chat.messages = {}
+    chat.running = false
+    chat.started_at = nil
+    chat.last_response = nil
+    save_chat(chat)
+    render_chat(chat.root)
     return
   end
 
   if lower == "add" then
-    M.chat_add(line1, line2, has_range)
+    M.chat_add(line1, line2, has_range, root, source_buf)
     return
   end
 
   if args == "" then
-    ensure_chat()
-    render_chat()
+    ensure_chat(root)
+    render_chat(root)
     return
   end
 
   if has_range then
-    local source_buf = vim.api.nvim_get_current_buf()
     local lines = vim.api.nvim_buf_get_lines(source_buf, line1 - 1, line2, false)
     args = args .. current_context(lines, "selection", source_buf)
   end
 
-  send_chat_prompt(args)
+  send_chat_prompt(args, root)
 end
 
-function M.chat_add(line1, line2, has_range)
-  local source_buf = vim.api.nvim_get_current_buf()
+function M.chat_add(line1, line2, has_range, root, source_buf)
+  source_buf = source_buf or vim.api.nvim_get_current_buf()
+  root = root or root_for_context(source_buf)
   local lines
   local label
 
@@ -730,34 +902,39 @@ function M.chat_add(line1, line2, has_range)
     label = "buffer"
   end
 
-  local buf = ensure_chat()
+  local buf = ensure_chat(root)
   append_lines(buf, split_lines(current_context(lines, label, source_buf)))
   notify("Context added to Pi Agent chat.")
 end
 
 function M.chat_submit()
-  if state.chat.running then
+  local current_buf = vim.api.nvim_get_current_buf()
+  local root = root_for_context(current_buf)
+  local chat = chat_for_root(root)
+
+  if chat.running then
     notify("Pi Agent is still running.", vim.log.levels.WARN)
     return
   end
 
-  local buf = state.chat.buf
-  if not buf or not vim.api.nvim_buf_is_valid(buf) or not state.chat.input_start then
+  local buf = chat.buf
+  if not buf or not vim.api.nvim_buf_is_valid(buf) or not chat.input_start then
     return
   end
 
-  local lines = vim.api.nvim_buf_get_lines(buf, state.chat.input_start, -1, false)
+  local lines = vim.api.nvim_buf_get_lines(buf, chat.input_start, -1, false)
   local prompt = trim(table.concat(lines, "\n"))
   if prompt == "" then
     notify("Type a prompt below '## You' first.", vim.log.levels.WARN)
     return
   end
 
-  send_chat_prompt(prompt)
+  send_chat_prompt(prompt, chat.root)
 end
 
-function M.chat_toggle(force)
-  local win = find_window(state.chat.buf)
+function M.chat_toggle(force, root)
+  local chat = chat_for_root(root or root_for_context())
+  local win = find_window(chat.buf)
 
   if force == false or win then
     if win then
@@ -766,12 +943,12 @@ function M.chat_toggle(force)
     return
   end
 
-  ensure_chat()
-  render_chat()
+  ensure_chat(chat.root)
+  render_chat(chat.root)
 end
 
 function M.panel()
-  render_chat()
+  render_chat(root_for_context())
 end
 
 function M.open(prompt)
@@ -781,7 +958,7 @@ function M.open(prompt)
     return
   end
 
-  local cwd = vim.fn.getcwd()
+  local cwd = root_for_context()
   local cmd = { agent_cmd, "cli", "--cd", cwd }
   vim.list_extend(cmd, config.terminal_args)
 
@@ -797,6 +974,7 @@ function M.open(prompt)
 end
 
 function M.command(prompt)
+  local cwd = root_for_context()
   prompt = trim(prompt)
 
   local function run(input)
@@ -810,6 +988,7 @@ function M.command(prompt)
 
     local buf = render_result("Pi Agent Command", { "Generating command..." })
     run_agent(request, {
+      cwd = cwd,
       on_exit = function(code, stdout, stderr)
         if code ~= 0 then
           set_lines(buf, output_lines(code, stdout, stderr), "markdown", false)

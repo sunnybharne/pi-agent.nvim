@@ -9,7 +9,8 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 - Neovim 0.10+
 - The bundled `bin/pi-agent` backend
-- A working model/runtime behind Pi Agent
+- A working model/runtime behind Pi Agent. The bundled backend uses Codex and
+  expects `codex login`/`:PiAgentLogin` to be complete.
 
 ## Install With lazy.nvim
 
@@ -73,12 +74,18 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 Open it with `:PiAgentChat` or `:PiAgentChat Toggle`.
 
+Pi Agent resolves the chat root from the current buffer. If the buffer is inside
+a Git repository, the Git top-level directory is used. Otherwise, the current
+folder is used. Chat history is stored per root and restored when you reopen the
+same project.
+
 Type below `## You`, then press Enter in normal or insert mode to submit.
 Press `q` in normal mode to close the chat window.
 
 The top of the panel shows the runtime target:
 
 ```text
+Root: /Users/sunnybharne/code/youtube
 Model: gpt-5.5 | Effort: xhigh | Speed: priority | Last: not run yet
 ```
 
@@ -106,6 +113,7 @@ require("pi_agent").setup({
   chat = {
     width = 0.38,
     min_width = 52,
+    storage_dir = nil,
   },
   mappings = {
     submit = "<CR>",
@@ -115,6 +123,7 @@ require("pi_agent").setup({
 ```
 
 With `agent_cmd = nil`, the plugin uses its bundled `bin/pi-agent` command.
-That backend currently delegates to the local Codex CLI, so auth remains outside
-Neovim and the plugin does not store API keys or tokens. Set `agent_cmd` to a
-different executable when you have a separate Pi Agent runtime.
+That backend currently delegates to Codex, preferring the ChatGPT app's bundled
+Codex binary on macOS when present and falling back to `codex` on `PATH`. Auth
+remains outside Neovim and the plugin does not store API keys or tokens. Set
+`agent_cmd` to a different executable when you have a separate Pi Agent runtime.

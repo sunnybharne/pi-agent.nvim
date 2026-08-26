@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CODEX_CMD="${PI_AGENT_CODEX_CMD:-codex}"
+default_codex_cmd() {
+  if [[ -n "${PI_AGENT_CODEX_CMD:-}" ]]; then
+    printf '%s\n' "$PI_AGENT_CODEX_CMD"
+    return
+  fi
+
+  local app_codex="/Applications/ChatGPT.app/Contents/Resources/codex"
+  if [[ -x "$app_codex" ]]; then
+    printf '%s\n' "$app_codex"
+    return
+  fi
+
+  printf 'codex\n'
+}
+
+CODEX_CMD="$(default_codex_cmd)"
 
 die() {
   printf 'pi-agent: %s\n' "$*" >&2
@@ -10,6 +25,11 @@ die() {
 
 need_codex() {
   command -v "$CODEX_CMD" >/dev/null 2>&1 || die "Codex CLI was not found. Install it or set PI_AGENT_CODEX_CMD."
+}
+
+ensure_runtime_auth() {
+  "$CODEX_CMD" login status >/dev/null 2>&1 \
+    || die "Runtime is not logged in. Run :PiAgentLogin or codex login, choose ChatGPT sign-in, then retry."
 }
 
 take_value() {
@@ -72,6 +92,7 @@ run_exec() {
   done
 
   need_codex
+  ensure_runtime_auth
 
   local codex_args=(exec --skip-git-repo-check --cd "$cwd" --color never)
   [[ -n "$model" ]] && codex_args+=(--model "$model")
@@ -183,7 +204,7 @@ main() {
       ;;
     login)
       need_codex
-      exec "$CODEX_CMD" login --device-auth "$@"
+      exec "$CODEX_CMD" login "$@"
       ;;
     status)
       need_codex
