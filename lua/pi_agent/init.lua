@@ -19,6 +19,8 @@ local defaults = {
     width = 0.38,
     min_width = 52,
     storage_dir = nil,
+    selection_max_lines = 200,
+    visible_files_max = 12,
   },
   mappings = {
     submit = "<CR>",
@@ -247,6 +249,247 @@ local function chat_for_root(root)
   state.active_root = root
   state.chat = state.chats[root]
   return state.chat
+end
+
+local function relative_to_root(path, root)
+  path = normalize_path(path)
+  root = normalize_path(root)
+
+  if path == root then
+    return "."
+  end
+
+  local prefix = root .. "/"
+  if path:sub(1, #prefix) == prefix then
+    return path:sub(#prefix + 1)
+  end
+
+  return path
+end
+
+local function is_plugin_buffer(buf)
+  if not buf or not vim.api.nvim_buf_is_valid(buf) then
+    return false
+  end
+
+  local ok, root = pcall(function()
+    return vim.b[buf].pi_agent_root
+  end)
+
+  return ok and root and root ~= ""
+end
+
+local function is_file_buffer(buf)
+  if not buf or not vim.api.nvim_buf_is_valid(buf) or is_plugin_buffer(buf) then
+    return false
+  end
+
+  return vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) ~= ""
+end
+
+local function buffer_cursor(buf, win)
+  if win and vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    return cursor[1], cursor[2] + 1
+  end
+
+  if vim.api.nvim_get_current_buf() == buf then
+    return vim.fn.line("."), vim.fn.col(".")
+  end
+
+  return 1, 1
+end
+
+local function file_context(buf, root, win)
+  if not is_file_buffer(buf) then
+    return nil
+  end
+
+  local path = normalize_path(vim.api.nvim_buf_get_name(buf))
+  local line, col = buffer_cursor(buf, win)
+  local line_text = vim.api.nvim_buf_get_lines(buf, line - 1, line, false)[1] or ""
+
+  return {
+    path = path,
+    label = relative_to_root(path, root),
+    filetype = vim.bo[buf].filetype,
+    line = line,
+    col = col,
+    line_text = line_text,
+  }
+end
+
+local function visible_file_contexts(root)
+  local items = {}
+  local seen = {}
+  local max_files = config.chat.visible_files_max or 12
+
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if is_file_buffer(buf) then
+      local path = normalize_path(vim.api.nvim_buf_get_name(buf))
+      if not seen[path] then
+        local item = file_context(buf, root, win)
+        if item then
+          table.insert(items, item)
+          seen[path] = true
+        end
+      end
+    end
+
+    if #items >= max_files then
+      break
+    end
+  end
+
+  return items
+end
+
+local function selection_context(buf, root, line1, line2, has_range)
+  if not has_range or not is_file_buffer(buf) then
+    return nil
+  end
+
+  line1 = tonumber(line1) or 1
+  line2 = tonumber(line2) or line1
+  if line2 < line1 then
+    line1, line2 = line2, line1
+  end
+
+  local path = normalize_path(vim.api.nvim_buf_get_name(buf))
+  local raw_lines = vim.api.nvim_buf_get_lines(buf, line1 - 1, line2, false)
+  local max_lines = config.chat.selection_max_lines or 200
+  local lines = {}
+
+  for index = 1, math.min(#raw_lines, max_lines) do
+    table.insert(lines, string.format("%d: %s", line1 + index - 1, raw_lines[index]))
+  end
+
+  return {
+    path = path,
+    label = relative_to_root(path, root),
+    start_line = line1,
+    end_line = line2,
+    total_lines = #raw_lines,
+    lines = lines,
+    truncated = #raw_lines > max_lines,
+  }
+end
+
+local function capture_editor_context(buf, win, line1, line2, has_range)
+  buf = buf or vim.api.nvim_get_current_buf()
+  win = win or vim.api.nvim_get_current_win()
+  local root = root_for_context(buf)
+  local context = {
+    root = root,
+    source = file_context(buf, root, win),
+    visible_files = visible_file_contexts(root),
+    selection = selection_context(buf, root, line1, line2, has_range),
+  }
+
+  if not context.source and #context.visible_files == 0 and not context.selection then
+    return root, nil
+  end
+
+  return root, context
+end
+
+local function refresh_chat_visible_context(chat)
+  if not chat then
+    return
+  end
+
+  chat.context = chat.context or { root = chat.root }
+  chat.context.root = chat.root
+  chat.context.visible_files = visible_file_contexts(chat.root)
+end
+
+local function editor_context_label(context)
+  if not context then
+    return nil
+  end
+
+  if context.source then
+    return string.format("%s:%d:%d", context.source.label, context.source.line, context.source.col)
+  end
+
+  local first_visible = context.visible_files and context.visible_files[1]
+  if first_visible then
+    return string.format("%s:%d:%d", first_visible.label, first_visible.line, first_visible.col)
+  end
+
+  return nil
+end
+
+local function selection_label(context)
+  local selection = context and context.selection
+  if not selection then
+    return nil
+  end
+
+  return string.format("%s:%d-%d", selection.label, selection.start_line, selection.end_line)
+end
+
+local function format_editor_context(context)
+  if not context then
+    return ""
+  end
+
+  local lines = {
+    "<editor_context>",
+    "Project root: " .. (context.root or ""),
+  }
+
+  if context.source then
+    table.insert(
+      lines,
+      string.format(
+        "Current file: %s (absolute: %s, filetype: %s)",
+        context.source.label,
+        context.source.path,
+        context.source.filetype or ""
+      )
+    )
+    table.insert(lines, string.format("Cursor: line %d, column %d", context.source.line, context.source.col))
+    table.insert(lines, string.format("Current line %d: %s", context.source.line, context.source.line_text))
+  end
+
+  if context.visible_files and #context.visible_files > 0 then
+    table.insert(lines, "Visible files:")
+    for _, item in ipairs(context.visible_files) do
+      table.insert(lines, string.format("- %s (line %d, column %d)", item.label, item.line, item.col))
+    end
+  end
+
+  if context.selection then
+    table.insert(
+      lines,
+      string.format(
+        "Selected range: %s lines %d-%d (%d lines)",
+        context.selection.label,
+        context.selection.start_line,
+        context.selection.end_line,
+        context.selection.total_lines
+      )
+    )
+    table.insert(
+      lines,
+      string.format(
+        '<selection file="%s" start_line="%d" end_line="%d">',
+        context.selection.path,
+        context.selection.start_line,
+        context.selection.end_line
+      )
+    )
+    vim.list_extend(lines, context.selection.lines)
+    if context.selection.truncated then
+      table.insert(lines, "... selection truncated ...")
+    end
+    table.insert(lines, "</selection>")
+  end
+
+  table.insert(lines, "</editor_context>")
+  return table.concat(lines, "\n")
 end
 
 local function plugin_root()
@@ -617,6 +860,7 @@ local function render_chat(root)
     "# Pi Agent Chat",
     "",
     "Root: " .. chat.root,
+    "Context: " .. (editor_context_label(chat.context) or "none"),
     string.format(
       "Model: %s | Effort: %s | Speed: %s | Last: %s",
       runtime_value("model"),
@@ -626,6 +870,12 @@ local function render_chat(root)
     ),
     "",
   }
+
+  local selected = selection_label(chat.context)
+  if selected then
+    table.insert(lines, "Selection: " .. selected)
+    table.insert(lines, "")
+  end
 
   for _, message in ipairs(chat.messages) do
     table.insert(lines, "## " .. message.role)
@@ -665,12 +915,19 @@ local function conversation_prompt(chat)
   local parts = {
     config.system_prompt,
     "Continue this Neovim assistant chat. Answer the latest user message directly.",
+    "Use the current Neovim editor context when the user asks what file, buffer, cursor position, or selection they are referring to.",
   }
 
   for _, message in ipairs(chat.messages) do
     table.insert(parts, "")
     table.insert(parts, message.role .. ":")
     table.insert(parts, message.content)
+  end
+
+  local editor_context = format_editor_context(chat.context)
+  if editor_context ~= "" then
+    table.insert(parts, "")
+    table.insert(parts, editor_context)
   end
 
   table.insert(parts, "")
@@ -689,6 +946,7 @@ local function send_chat_prompt(prompt, root)
   end
 
   local chat = chat_for_root(root or root_for_context())
+  refresh_chat_visible_context(chat)
   ensure_chat(chat.root)
   table.insert(chat.messages, { role = "User", content = prompt })
   chat.running = true
@@ -848,7 +1106,13 @@ end
 
 function M.chat(prompt, line1, line2, has_range)
   local source_buf = vim.api.nvim_get_current_buf()
-  local root = root_for_context(source_buf)
+  local source_win = vim.api.nvim_get_current_win()
+  local root, context = capture_editor_context(source_buf, source_win, line1, line2, has_range)
+  local chat = chat_for_root(root)
+  if context then
+    chat.context = context
+  end
+
   local args = trim(prompt)
   local subcommand = args:match("^(%S+)")
   local lower = subcommand and subcommand:lower() or ""
@@ -859,7 +1123,6 @@ function M.chat(prompt, line1, line2, has_range)
   end
 
   if lower == "new" or lower == "clear" then
-    local chat = chat_for_root(root)
     chat.messages = {}
     chat.running = false
     chat.started_at = nil
@@ -870,7 +1133,7 @@ function M.chat(prompt, line1, line2, has_range)
   end
 
   if lower == "add" then
-    M.chat_add(line1, line2, has_range, root, source_buf)
+    M.chat_add(line1, line2, has_range, root, source_buf, source_win)
     return
   end
 
@@ -881,16 +1144,22 @@ function M.chat(prompt, line1, line2, has_range)
   end
 
   if has_range then
-    local lines = vim.api.nvim_buf_get_lines(source_buf, line1 - 1, line2, false)
-    args = args .. current_context(lines, "selection", source_buf)
+    args = args .. "\n\nRefer to the selected range from the current Neovim editor context."
   end
 
   send_chat_prompt(args, root)
 end
 
-function M.chat_add(line1, line2, has_range, root, source_buf)
+function M.chat_add(line1, line2, has_range, root, source_buf, source_win)
   source_buf = source_buf or vim.api.nvim_get_current_buf()
-  root = root or root_for_context(source_buf)
+  source_win = source_win or vim.api.nvim_get_current_win()
+  local context
+  root, context = capture_editor_context(source_buf, source_win, line1, line2, has_range)
+  local chat = chat_for_root(root)
+  if context then
+    chat.context = context
+  end
+
   local lines
   local label
 
@@ -947,8 +1216,16 @@ function M.chat_toggle(force, root)
   render_chat(chat.root)
 end
 
-function M.panel()
-  render_chat(root_for_context())
+function M.panel(line1, line2, has_range)
+  local source_buf = vim.api.nvim_get_current_buf()
+  local source_win = vim.api.nvim_get_current_win()
+  local root, context = capture_editor_context(source_buf, source_win, line1, line2, has_range)
+  local chat = chat_for_root(root)
+  if context then
+    chat.context = context
+  end
+
+  render_chat(root)
 end
 
 function M.open(prompt)
@@ -1114,9 +1391,9 @@ end
 function M.setup(opts)
   config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
 
-  vim.api.nvim_create_user_command("PiAgentPanel", function()
-    M.panel()
-  end, { desc = "Open the Pi Agent panel on the right" })
+  vim.api.nvim_create_user_command("PiAgentPanel", function(command)
+    M.panel(command.line1, command.line2, command.range > 0)
+  end, { range = true, desc = "Open the Pi Agent panel on the right" })
 
   vim.api.nvim_create_user_command("PiAgent", function(command)
     M.inline(command.args, command.line1, command.line2, command.range > 0)

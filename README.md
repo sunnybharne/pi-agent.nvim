@@ -33,6 +33,7 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
   },
   keys = {
     { "<leader>cc", "<cmd>PiAgentPanel<cr>", desc = "Open Pi Agent panel" },
+    { "<leader>cc", ":PiAgentPanel<cr>", mode = "v", desc = "Open Pi Agent panel with selection" },
     { "<leader>aa", "<cmd>PiAgentActions<cr>", desc = "Pi Agent actions" },
     { "<leader>ac", "<cmd>PiAgentChat Toggle<cr>", desc = "Toggle Pi Agent chat" },
     { "<leader>ai", "<cmd>PiAgent<cr>", desc = "Pi Agent inline" },
@@ -55,7 +56,7 @@ Neovim calls Pi Agent; the backend owns the model/runtime integration.
 
 | Command | Purpose |
 | --- | --- |
-| `:PiAgentPanel` | Open the Pi Agent panel on the right. |
+| `:PiAgentPanel` | Open the Pi Agent panel on the right. With a visual range, selected lines are attached as editor context. |
 | `:PiAgent [prompt]` | Inline-style prompt. With a visual range, selected text is included as context. |
 | `:PiAgentChat [prompt]` | Open the chat buffer, or send a prompt to it. |
 | `:PiAgentChat Toggle` | Toggle the chat buffer. |
@@ -79,6 +80,10 @@ a Git repository, the Git top-level directory is used. Otherwise, the current
 folder is used. Chat history is stored per root and restored when you reopen the
 same project.
 
+The panel also captures the current editor context before focus moves into the
+chat: current file, cursor line, visible files, and selected line range/text
+when opened from visual mode.
+
 Type below `## You`, then press Enter in normal or insert mode to submit.
 Press `q` in normal mode to close the chat window.
 
@@ -86,6 +91,7 @@ The top of the panel shows the runtime target:
 
 ```text
 Root: /Users/sunnybharne/code/youtube
+Context: lua/pi_agent/init.lua:42:1
 Model: gpt-5.5 | Effort: xhigh | Speed: priority | Last: not run yet
 ```
 
@@ -114,6 +120,8 @@ require("pi_agent").setup({
     width = 0.38,
     min_width = 52,
     storage_dir = nil,
+    selection_max_lines = 200,
+    visible_files_max = 12,
   },
   mappings = {
     submit = "<CR>",

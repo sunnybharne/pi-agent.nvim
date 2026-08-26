@@ -4,7 +4,8 @@
 COMMANDS                                                   *pi-agent-commands*
 
 :PiAgentPanel~
-  Open the Pi Agent panel on the right.
+  Open the Pi Agent panel on the right. With a visual range, selected lines are
+  attached as editor context.
 
 :PiAgent [prompt]~
   Inline-style interaction. With a visual range, selected text is included as
@@ -62,12 +63,17 @@ a Git repository, the Git top-level directory is used. Otherwise, the current
 folder is used. Chat history is stored per root and restored when you reopen the
 same project.
 
+The panel also captures the current editor context before focus moves into the
+chat: current file, cursor line, visible files, and selected line range/text
+when opened from visual mode.
+
 Type below the `## You` heading and press Enter in normal or insert mode to
 submit. Press `q` in normal mode to close the chat window.
 
 The top of the panel shows the runtime target:
 >
   Root: /Users/sunnybharne/code/youtube
+  Context: lua/pi_agent/init.lua:42:1
   Model: gpt-5.5 | Effort: xhigh | Speed: priority | Last: not run yet
 <
 
@@ -98,6 +104,8 @@ Use:
       width = 0.38,
       min_width = 52,
       storage_dir = nil,
+      selection_max_lines = 200,
+      visible_files_max = 12,
     },
     mappings = {
       submit = "<CR>",
