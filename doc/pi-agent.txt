@@ -1,0 +1,47 @@
+*pi-agent.nvim* A small Neovim bridge to the local Codex CLI
+
+==============================================================================
+COMMANDS                                                   *pi-agent-commands*
+
+:PiAgent [prompt]~
+  Open interactive Codex in a floating terminal.
+
+:PiAgentAsk [prompt]~
+  Run `codex exec` and show the response in a scratch buffer.
+
+:PiAgentBuffer [prompt]~
+  Run `codex exec` with the current buffer included as context.
+
+:'<,'>PiAgentSelection [prompt]~
+  Run `codex exec` with the selected lines included as context.
+
+:PiAgentLogin~
+  Open `codex login --device-auth` in a floating terminal.
+
+:PiAgentStatus~
+  Check whether Codex authentication is ready.
+
+==============================================================================
+CONFIGURATION                                           *pi-agent-configuration*
+
+Use:
+>
+  require("pi_agent").setup({
+    codex_cmd = "codex",
+    sandbox = "read-only",
+    approval = "never",
+    model = nil,
+    extra_args = {},
+    terminal_args = {},
+    window = {
+      width = 0.85,
+      height = 0.85,
+      border = "rounded",
+    },
+  })
+<
+
+Authentication is handled by the Codex CLI. This plugin does not store API keys
+or tokens.
+
+ vim:tw=78:ts=2:sw=2:et:ft=help:norl:
