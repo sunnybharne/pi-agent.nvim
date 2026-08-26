@@ -1,13 +1,35 @@
-*pi-agent.nvim* A small Neovim bridge to the local Codex CLI
+*pi-agent.nvim* A small Neovim assistant backed by the local Codex CLI
 
 ==============================================================================
 COMMANDS                                                   *pi-agent-commands*
 
 :PiAgent [prompt]~
+  Inline-style interaction. With a visual range, selected text is included as
+  context.
+
+:PiAgentChat [prompt]~
+  Open the chat buffer, or send a prompt to it.
+
+:PiAgentChat Toggle~
+  Toggle the chat buffer.
+
+:PiAgentChat New~
+:PiAgentChat Clear~
+  Reset the current chat.
+
+:'<,'>PiAgentChat Add~
+  Add selected text to the chat input. Without a visual range, the current
+  buffer is added.
+
+:PiAgentCLI [prompt]~
   Open interactive Codex in a floating terminal.
 
-:PiAgentAsk [prompt]~
-  Run `codex exec` and show the response in a scratch buffer.
+:PiAgentCmd [request]~
+  Generate one Vim command and place it on the command line without executing
+  it.
+
+:PiAgentActions~
+  Open the action palette.
 
 :PiAgentBuffer [prompt]~
   Run `codex exec` with the current buffer included as context.
@@ -15,11 +37,25 @@ COMMANDS                                                   *pi-agent-commands*
 :'<,'>PiAgentSelection [prompt]~
   Run `codex exec` with the selected lines included as context.
 
+:'<,'>PiAgentEdit [instruction]~
+  Replace the selected lines with Codex output.
+
 :PiAgentLogin~
   Open `codex login --device-auth` in a floating terminal.
 
 :PiAgentStatus~
   Check whether Codex authentication is ready.
+
+==============================================================================
+CHAT BUFFER                                             *pi-agent-chat-buffer*
+
+Open the chat with:
+>
+  :PiAgentChat
+<
+
+Type below the `## You` heading and press `<C-s>` in normal or insert mode to
+submit. Press `q` in normal mode to close the chat window.
 
 ==============================================================================
 CONFIGURATION                                           *pi-agent-configuration*
@@ -33,10 +69,19 @@ Use:
     model = nil,
     extra_args = {},
     terminal_args = {},
+    system_prompt = "You are Pi Agent, a concise AI coding assistant running inside Neovim.",
     window = {
       width = 0.85,
       height = 0.85,
       border = "rounded",
+    },
+    chat = {
+      width = 0.38,
+      min_width = 52,
+    },
+    mappings = {
+      submit = "<C-s>",
+      close = "q",
     },
   })
 <
