@@ -1,0 +1,21 @@
+# Pi Agent.nvim
+
+> Pi Agent.nvim is a small Neovim assistant panel that attaches project, file, cursor, visible-buffer, and visual-selection context to coding conversations.
+
+## Documentation
+
+- [Introduction](https://sunnybharne.github.io/pi-agent.nvim/): Product overview and core workflow.
+- [Installation](https://sunnybharne.github.io/pi-agent.nvim/installation): Requirements and lazy.nvim configuration.
+- [Getting Started](https://sunnybharne.github.io/pi-agent.nvim/getting-started): Open the panel and ask about files or selections.
+- [Authentication](https://sunnybharne.github.io/pi-agent.nvim/authentication): Login behavior and credential boundaries.
+- [Chat Buffer](https://sunnybharne.github.io/pi-agent.nvim/usage/chat-buffer): Chat lifecycle and mappings.
+- [Editor Context](https://sunnybharne.github.io/pi-agent.nvim/usage/editor-context): Context captured from Neovim.
+- [Inline Actions](https://sunnybharne.github.io/pi-agent.nvim/usage/inline-actions): One-off prompts and edits.
+- [Commands](https://sunnybharne.github.io/pi-agent.nvim/commands): Complete command reference.
+- [Configuration](https://sunnybharne.github.io/pi-agent.nvim/configuration): Setup options and defaults.
+- [Troubleshooting](https://sunnybharne.github.io/pi-agent.nvim/troubleshooting): Common runtime, login, and root-detection issues.
+- [Contributing](https://sunnybharne.github.io/pi-agent.nvim/contributing): Development and contribution guidance.
+
+## Source
+
+- [GitHub repository](https://github.com/sunnybharne/pi-agent.nvim)

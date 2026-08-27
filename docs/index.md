@@ -3,38 +3,29 @@ layout: home
 
 hero:
   name: Pi Agent.nvim
-  text: Small AI chat for Neovim.
-  tagline: A right-side assistant panel that knows your current project, file, cursor, and selected lines.
+  text: Your coding agent, inside Neovim.
+  tagline: A focused assistant panel that understands your project, file, cursor, and selected lines—without pulling you out of the editor.
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: Pi Agent logo
   actions:
     - theme: brand
-      text: Get Started
+      text: Get started
       link: /getting-started
     - theme: alt
-      text: Install
-      link: /installation
+      text: View on GitHub
+      link: https://github.com/sunnybharne/pi-agent.nvim
 
 features:
-  - title: Project-root chats
-    details: The panel uses the nearest Git root when available, then restores chat history for that project.
-  - title: Editor context
-    details: Ask about the file, cursor, visible buffers, or selected lines without retyping where you are.
-  - title: Minimal runtime bridge
-    details: The bundled backend delegates to Codex today, while the Neovim plugin stays small and replaceable.
+  - icon: "⌁"
+    title: Project-root chats
+    details: Keep a separate conversation for each codebase, restored automatically from the nearest Git root.
+  - icon: "↳"
+    title: Editor-native context
+    details: Ask about your active file, cursor, visible buffers, or selected lines without restating where you are.
+  - icon: "π"
+    title: A small, replaceable core
+    details: Pi Agent owns the Neovim experience while a lightweight backend owns the model runtime.
 ---
 
-## What It Does
-
-Pi Agent.nvim is a personal Neovim assistant plugin. It opens a compact chat panel on the right, sends prompts to the bundled `pi-agent` backend, and keeps context attached to the project you are editing.
-
-It is intentionally smaller than broad assistant frameworks. The plugin owns the Neovim experience: windows, mappings, editor context, and chat history. The backend owns the model runtime.
-
-## Core Workflow
-
-```text
-Open file -> press <leader>cc -> ask Pi Agent -> get an answer in the side panel
-```
-
-When you open the panel from visual mode, Pi Agent captures the selected range and sends the selected text with line numbers.
+<HomeShowcase />

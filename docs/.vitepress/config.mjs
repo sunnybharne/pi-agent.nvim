@@ -2,18 +2,29 @@ import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "Pi Agent.nvim",
-  description: "A small Neovim assistant panel backed by Pi Agent.",
+  description: "AI pair programming, inside Neovim.",
   base: "/pi-agent.nvim/",
   cleanUrls: true,
   lastUpdated: true,
   head: [
-    ["link", { rel: "icon", href: "/pi-agent.nvim/logo.svg" }],
+    ["link", { rel: "icon", type: "image/png", sizes: "32x32", href: "/pi-agent.nvim/favicon-32x32.png" }],
+    ["link", { rel: "apple-touch-icon", sizes: "180x180", href: "/pi-agent.nvim/apple-touch-icon.png" }],
+    ["meta", { name: "theme-color", content: "#20302c" }],
     ["meta", { property: "og:type", content: "website" }],
     ["meta", { property: "og:title", content: "Pi Agent.nvim" }],
-    ["meta", { property: "og:description", content: "A small Neovim assistant panel backed by Pi Agent." }],
+    ["meta", { property: "og:description", content: "AI pair programming, inside Neovim." }],
+    ["meta", { property: "og:url", content: "https://sunnybharne.github.io/pi-agent.nvim/" }],
+    ["meta", { property: "og:image", content: "https://sunnybharne.github.io/pi-agent.nvim/og.png" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
+    ["meta", { name: "twitter:title", content: "Pi Agent.nvim" }],
+    ["meta", { name: "twitter:description", content: "AI pair programming, inside Neovim." }],
+    ["meta", { name: "twitter:image", content: "https://sunnybharne.github.io/pi-agent.nvim/og.png" }],
   ],
+  sitemap: {
+    hostname: "https://sunnybharne.github.io/pi-agent.nvim/",
+  },
   themeConfig: {
-    logo: "/logo.svg",
+    logo: "/logo.png",
     siteTitle: "Pi Agent.nvim",
     nav: [
       { text: "Guide", link: "/getting-started" },
@@ -54,13 +65,21 @@ export default defineConfig({
     search: {
       provider: "local",
     },
+    outline: {
+      level: [2, 3],
+      label: "On this page",
+    },
     editLink: {
       pattern: "https://github.com/sunnybharne/pi-agent.nvim/edit/main/docs/:path",
       text: "Edit this page on GitHub",
     },
     footer: {
-      message: "Released as a personal Neovim assistant plugin.",
+      message: "A focused coding agent for Neovim.",
       copyright: "Copyright © 2026 Sunny Bharne",
+    },
+    docFooter: {
+      prev: "Previous page",
+      next: "Next page",
     },
   },
 });

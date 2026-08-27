@@ -1,11 +1,25 @@
-# pi-agent.nvim
+<p align="center">
+  <img src="docs/public/logo.png" alt="Pi Agent.nvim logo" width="164" />
+</p>
+
+<h1 align="center">Pi Agent.nvim</h1>
+
+<p align="center">
+  A focused coding agent that stays inside Neovim.
+</p>
+
+<p align="center">
+  <a href="https://sunnybharne.github.io/pi-agent.nvim/">Documentation</a>
+  ·
+  <a href="https://sunnybharne.github.io/pi-agent.nvim/installation">Installation</a>
+  ·
+  <a href="https://sunnybharne.github.io/pi-agent.nvim/getting-started">Getting started</a>
+</p>
 
 A personal Neovim assistant that talks to the `pi-agent` backend.
 
 The command shape is inspired by CodeCompanion, but this plugin stays small.
 Neovim calls Pi Agent; the backend owns the model/runtime integration.
-
-Documentation site: https://sunnybharne.github.io/pi-agent.nvim/
 
 ## Requirements
 
