@@ -1022,38 +1022,29 @@ function M.ask(prompt)
   M.exec(prompt, { title = "Pi Agent Inline" })
 end
 
-function M.buffer(prompt)
+local function ask_about_lines(prompt, kind, title, first, last)
   local source_buf = vim.api.nvim_get_current_buf()
   local cwd = root_for_context(source_buf)
-  local lines = vim.api.nvim_buf_get_lines(source_buf, 0, -1, false)
-  local full_prompt = trim(prompt)
+  local lines = vim.api.nvim_buf_get_lines(source_buf, first, last, false)
+  local request = trim(prompt)
 
   local function run(input)
-    M.exec(input .. current_context(lines, "buffer", source_buf), { title = "Pi Agent Buffer", cwd = cwd })
+    M.exec(input .. current_context(lines, kind, source_buf), { title = title, cwd = cwd })
   end
 
-  if full_prompt == "" then
-    prompt_with_input("Pi Agent buffer prompt: ", run)
+  if request == "" then
+    prompt_with_input("Pi Agent " .. kind .. " prompt: ", run)
   else
-    run(full_prompt)
+    run(request)
   end
 end
 
+function M.buffer(prompt)
+  ask_about_lines(prompt, "buffer", "Pi Agent Buffer", 0, -1)
+end
+
 function M.selection(prompt, line1, line2)
-  local source_buf = vim.api.nvim_get_current_buf()
-  local cwd = root_for_context(source_buf)
-  local lines = vim.api.nvim_buf_get_lines(source_buf, line1 - 1, line2, false)
-  local full_prompt = trim(prompt)
-
-  local function run(input)
-    M.exec(input .. current_context(lines, "selection", source_buf), { title = "Pi Agent Selection", cwd = cwd })
-  end
-
-  if full_prompt == "" then
-    prompt_with_input("Pi Agent selection prompt: ", run)
-  else
-    run(full_prompt)
-  end
+  ask_about_lines(prompt, "selection", "Pi Agent Selection", line1 - 1, line2)
 end
 
 function M.edit_selection(prompt, line1, line2)
